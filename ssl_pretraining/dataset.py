@@ -118,7 +118,7 @@ class EchoDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.fnames_i)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx): 
         x_i = load_video(os.path.join(self.video_dir, self.fnames_i[idx]))
         x_j = load_video(os.path.join(self.video_dir, self.fnames_j[idx]))
 
@@ -140,3 +140,79 @@ class EchoDataset(torch.utils.data.Dataset):
         x_j = np.transpose(x_j, (3, 0, 1, 2))
 
         return torch.from_numpy(x_i).float(), torch.from_numpy(x_j).float(), torch.from_numpy(reordering_i).long(), torch.from_numpy(reordering_j).long()
+
+class EchoNetLVHDataset(EchoDataset):
+    """
+    Variant of EchoDataset for EchoNet-LVH, which has exactly one video per patient. Instead of pairing two different videos from the same study,
+    each positive pair is formed from the *same* video: two clips are subsampled (from independent random start frames by default), resized,
+    and independently augmented with the same light spatial augmentation + frame re-ordering as EchoDataset.
+
+    Attributes
+    ----------
+    split: str
+        Data split used to select videos (one of ["train", "val", "test"], matching the "split" column of MeasurementsList.csv)
+    clip_len : int
+        Number of frames to form video clips for training (clip length)
+    sampling_rate : int
+        Temporal "stride" when sampling frames to form clips
+    frame_size : int
+        Side length (pixels) that each frame is resized to
+    same_clip : bool
+        If True, both views use the same clip and differ only by augmentation; otherwise each view samples its own clip
+    fnames : list[str]
+        List of full paths to videos found on disk for this split
+    temporal_orderings : list[tuple]
+        List of all permutations of frame indices (target classes for frame re-ordering task)
+    """
+    def __init__(self, data_dir, split, clip_len=4, sampling_rate=1, frame_size=112, same_clip=False, n=None):
+        self.split = split
+        self.clip_len = clip_len
+        self.sampling_rate = sampling_rate
+        self.frame_size = frame_size
+        self.same_clip = same_clip
+
+        label_df = pd.read_csv(os.path.join(data_dir, 'MeasurementsList.csv'))
+        names = np.sort(label_df.loc[label_df['split'] == self.split, 'HashedFileName'].unique())
+
+        batch_dirs = sorted(d for d in os.listdir(data_dir) if d.startswith('Batch') and os.path.isdir(os.path.join(data_dir, d)))
+        available = {}
+        for batch_dir in batch_dirs:
+            for fname in os.listdir(os.path.join(data_dir, batch_dir)):
+                if fname.endswith('.avi'):
+                    available.setdefault(fname[:-4], os.path.join(data_dir, batch_dir, fname))
+
+        self.fnames = [available[name] for name in names if name in available]
+        print(f'{self.split}: found {len(self.fnames)} of {len(names)} videos ({len(names) - len(self.fnames)} missing on disk)')
+
+        if n is not None:
+            self.fnames = self.fnames[:n]
+
+        self.temporal_orderings = [_ for _ in itertools.permutations(np.arange(self.clip_len))]
+
+    def _resize(self, x):
+        return np.stack([cv2.resize(frame, (self.frame_size, self.frame_size), interpolation=cv2.INTER_AREA) for frame in x], axis=0)
+
+    @staticmethod
+    def _normalize(x):
+        x = x.astype(np.float32)
+        return (x - x.min()) / max(x.max() - x.min(), 1e-8)
+
+    def __len__(self):
+        return len(self.fnames)
+
+    def __getitem__(self, idx):
+        x = load_video(self.fnames[idx])
+
+        # Sample two clips from the same video (same clip if same_clip=True)
+        x_i = self._resize(self._sample_frames(x))
+        x_j = x_i.copy() if self.same_clip else self._resize(self._sample_frames(x))
+
+        # Independently augment each view and obtain frame ordering label
+        x_i, reordering_i = self._augment(x_i)
+        x_j, reordering_j = self._augment(x_j)
+
+        # Min-max normalize and swap axes for PyTorch
+        x_i = np.transpose(self._normalize(x_i), (3, 0, 1, 2))
+        x_j = np.transpose(self._normalize(x_j), (3, 0, 1, 2))
+
+        return torch.from_numpy(x_i).float(), torch.from_numpy(x_j).float(), torch.tensor(reordering_i).long(), torch.tensor(reordering_j).long()
