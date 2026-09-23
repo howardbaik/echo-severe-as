@@ -1,0 +1,36 @@
+[project]
+name = "echo-severe-as"
+version = "0.1.0"
+description = "Severe aortic stenosis detection by deep learning applied to echocardiography"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    # core scientific stack
+    "numpy>=1.26",
+    "pandas>=2.0",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "scikit-learn>=1.4",
+    "scikit-image>=0.22",
+    "statsmodels>=0.14",
+    "mlxtend>=0.23",
+    "tableone>=0.8",
+    "joblib>=1.3",
+    "tqdm>=4.66",
+    "openpyxl>=3.1",
+    # imaging / video I/O
+    "opencv-python>=4.9",
+    "pydicom>=2.4",
+    "nibabel>=5.2",
+    "imageio>=2.34",
+    # deep learning
+    "torch>=2.2",
+    "torchvision>=0.17",
+    "medcam>=0.1.21",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29",
+]
