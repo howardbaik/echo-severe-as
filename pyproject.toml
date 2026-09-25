@@ -34,3 +34,16 @@ dependencies = [
 dev = [
     "ipykernel>=6.29",
 ]
+
+# Each folder is run as a script from inside itself and has its own utils.py,
+# so resolve bare imports (e.g. `from utils import ...`) relative to that folder.
+[tool.pyright]
+executionEnvironments = [
+    { root = "ssl_pretraining" },
+    { root = "AS_detection" },
+    { root = "analysis" },
+    { root = "preprocessing" },
+]
+
+[tool.pyrefly]
+enable-fallback-search-path = true
