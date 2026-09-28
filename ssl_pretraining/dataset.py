@@ -106,7 +106,7 @@ class EchoDataset(torch.utils.data.Dataset):
 
     def _augment(self, x):
         # Zero-pad by up to 8 pixels
-        pad = 8
+        pad = 8 
 
         l, h, w, c = x.shape
         temp = np.zeros((l, h + 2 * pad, w + 2 * pad, c), dtype=x.dtype)

@@ -1,16 +1,16 @@
+import argparse
 import os
 import shutil
 
-import argparse
 import pandas as pd
 import torch
 import torchvision
 import tqdm
-
 from dataset import EchoDataset
 from losses import NT_Xent
 from model import SimCLR
 from utils import seed_worker, set_seed
+
 
 def main(args):
     # Create output directory and clean out if already exists
