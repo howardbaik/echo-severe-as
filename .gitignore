@@ -5,3 +5,7 @@ __pycache__/
 .ipynb_checkpoints/
 .posit/
 data/
+
+# Training outputs / checkpoints
+ssl_pretraining/output/
+*.pt
