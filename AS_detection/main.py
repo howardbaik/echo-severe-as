@@ -1,18 +1,24 @@
-import tqdm
-import torchvision
-from sklearn.metrics import balanced_accuracy_score, roc_auc_score, matthews_corrcoef, confusion_matrix
-from sklearn.utils import compute_class_weight
-import random
-import torch
-import os
-import pandas as pd
-import numpy as np
-import cv2
 import argparse
+import os
+import random
 import shutil
 
-from utils import train, validate, evaluate, seed_worker, set_seed
+import cv2
+import numpy as np
+import pandas as pd
+import torch
+import torchvision
+import tqdm
 from dataset import EchoDataset
+from sklearn.metrics import (
+    balanced_accuracy_score,
+    confusion_matrix,
+    matthews_corrcoef,
+    roc_auc_score,
+)
+from sklearn.utils import compute_class_weight
+from utils import evaluate, seed_worker, set_seed, train, validate
+
 
 def main(args):
     MODEL_NAME = args.model_name
