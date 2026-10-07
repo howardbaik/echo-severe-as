@@ -163,6 +163,49 @@ class EchoDataset(torch.utils.data.Dataset):
         )
 
 
+def lvh_labels(csv_path, threshold_cm=1.1):
+    """
+    Derive a per-video binary LVH label from EchoNet-LVH diastolic measurements. EchoNet-LVH provides no LVH label or sex/BSA, so LVH is defined by
+    sex-agnostic wall thickness per ASE/EACVI 2015 chamber quantification guidelines: max(IVSd, LVPWd) >= threshold_cm. The default of 1.1 cm exceeds
+    the upper limit of normal for both men (1.0 cm) and women (0.9 cm). Duplicate measurements of the same Calc are aggregated by median, and videos
+    missing any of IVSd, LVPWd, or LVIDd are dropped.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to MeasurementsList.csv (measurements in cm)
+    threshold_cm : float
+        Wall thickness cutoff (cm) at or above which a video is labeled LVH
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per video with columns HashedFileName, split, IVSd, LVIDd, LVPWd, max_wall, lvh (0/1), rwt (relative wall thickness),
+        and lv_mass_g (unindexed LV mass via the ASE cube formula)
+    """
+    df = pd.read_csv(csv_path)
+    df = df[df["Calc"].isin(["IVSd", "LVPWd", "LVIDd"])]
+    wide = (
+        df.groupby(["HashedFileName", "split", "Calc"])["CalcValue"]
+        .median()
+        .unstack("Calc")
+        .dropna()
+        .reset_index()
+    )
+    wide.columns.name = None
+
+    wide["max_wall"] = wide[["IVSd", "LVPWd"]].max(axis=1)
+    wide["lvh"] = (wide["max_wall"] >= threshold_cm).astype(int)
+    wide["rwt"] = 2 * wide["LVPWd"] / wide["LVIDd"]
+    wide["lv_mass_g"] = (
+        0.8
+        * 1.04
+        * ((wide["IVSd"] + wide["LVIDd"] + wide["LVPWd"]) ** 3 - wide["LVIDd"] ** 3)
+        + 0.6
+    )
+    return wide
+
+
 class EchoNetLVHDataset(EchoDataset):
     """
     Variant of EchoDataset for EchoNet-LVH, which has exactly one video per patient. Instead of pairing two different videos from the same study,
