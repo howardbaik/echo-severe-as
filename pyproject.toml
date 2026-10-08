@@ -28,6 +28,7 @@ dependencies = [
     "torch>=2.2",
     "torchvision>=0.17",
     "medcam>=0.1.21",
+    "polars>=2.0.0",
 ]
 
 [dependency-groups]
