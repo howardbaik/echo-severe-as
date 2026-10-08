@@ -5,11 +5,10 @@ import random
 import cv2
 import numpy as np
 import pandas as pd
+import polars as pl
 import torch
 import tqdm
-
 from scipy.ndimage import rotate
-
 from utils import load_video
 
 
@@ -106,7 +105,7 @@ class EchoDataset(torch.utils.data.Dataset):
 
     def _augment(self, x):
         # Zero-pad by up to 8 pixels
-        pad = 8 
+        pad = 8
 
         l, h, w, c = x.shape
         temp = np.zeros((l, h + 2 * pad, w + 2 * pad, c), dtype=x.dtype)
@@ -179,29 +178,24 @@ def lvh_labels(csv_path, threshold_cm=1.1):
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         One row per video with columns HashedFileName, split, IVSd, LVIDd, LVPWd, max_wall, lvh (0/1), rwt (relative wall thickness),
         and lv_mass_g (unindexed LV mass via the ASE cube formula)
     """
-    df = pd.read_csv(csv_path)
-    df = df[df["Calc"].isin(["IVSd", "LVPWd", "LVIDd"])]
+    df = pl.read_csv(csv_path, infer_schema_length=None)
+    df = df.filter(pl.col("Calc").is_in(["IVSd", "LVPWd", "LVIDd"]))
     wide = (
-        df.groupby(["HashedFileName", "split", "Calc"])["CalcValue"]
-        .median()
-        .unstack("Calc")
-        .dropna()
-        .reset_index()
+        df.group_by(["HashedFileName", "split", "Calc"])
+        .agg(pl.col("CalcValue").median())
+        .pivot(on="Calc", index=["HashedFileName", "split"], values="CalcValue")
+        .drop_nulls()
     )
-    wide.columns.name = None
 
-    wide["max_wall"] = wide[["IVSd", "LVPWd"]].max(axis=1)
-    wide["lvh"] = (wide["max_wall"] >= threshold_cm).astype(int)
-    wide["rwt"] = 2 * wide["LVPWd"] / wide["LVIDd"]
-    wide["lv_mass_g"] = (
-        0.8
-        * 1.04
-        * ((wide["IVSd"] + wide["LVIDd"] + wide["LVPWd"]) ** 3 - wide["LVIDd"] ** 3)
-        + 0.6
+    wide = wide.with_columns(
+        pl.max_horizontal("IVSd", "LVPWd").alias("max_wall"),
+    )
+    wide = wide.with_columns(
+        (pl.col("max_wall") >= threshold_cm).cast(pl.Int8).alias("lvh")
     )
     return wide
 
