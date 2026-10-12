@@ -14,7 +14,7 @@ from sklearn import metrics
 from sklearn.preprocessing import LabelBinarizer
 
 def train(model, device, loss_fxn, optimizer, data_loader, history, epoch, model_dir):
-    """Train model to classify severe AS for one epoch.
+    """Train model to classify LVH for one epoch.
 
     Parameters
     ----------
@@ -114,7 +114,7 @@ def train(model, device, loss_fxn, optimizer, data_loader, history, epoch, model
     return history.append(current_metrics)
 
 def validate(model, device, loss_fxn, optimizer, data_loader, history, epoch, model_dir, early_stopping_dict, best_model_wts):
-    """Evaluate severe AS model on validation set, saving weights if val loss has improved.
+    """Evaluate LVH model on validation set, saving weights if val loss has improved.
 
     Parameters
     ----------
@@ -234,7 +234,7 @@ def validate(model, device, loss_fxn, optimizer, data_loader, history, epoch, mo
     return history.append(current_metrics), early_stopping_dict, best_model_wts
 
 def evaluate(model, device, loss_fxn, data_loader, split, classes, history, model_dir, weights):
-    """Evaluate severe AS model on test set and save performance metrics (text file summary, plots, etc.)
+    """Evaluate LVH model on test set and save performance metrics (text file summary, plots, etc.)
 
     Parameters
     ----------
@@ -417,7 +417,7 @@ def evaluate(model, device, loss_fxn, data_loader, split, classes, history, mode
 
     # Plot ROC
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.plot(fpr, tpr, lw=2, label=f'Severe AS (AUC: {auroc:.3f})')
+    ax.plot(fpr, tpr, lw=2, label=f'LVH (AUC: {auroc:.3f})')
     ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     ax.set_xlim([-0.05, 1.0])
     ax.set_ylim([0.0, 1.05])
@@ -428,7 +428,7 @@ def evaluate(model, device, loss_fxn, data_loader, split, classes, history, mode
 
     # Plot PR curve
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.plot(res, prs, lw=2, label=f'Severe AS (AUC: {aupr:.3f})')
+    ax.plot(res, prs, lw=2, label=f'LVH (AUC: {aupr:.3f})')
     ax.axhline(y=y_true.sum()/y_true.size, color='navy', lw=2, linestyle='--')
     ax.set_xlim([-0.05, 1.05])
     ax.set_ylim([-0.05, 1.05])
