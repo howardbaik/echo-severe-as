@@ -10,9 +10,10 @@ from scipy.ndimage import rotate
 
 from utils import load_video
 
-class EchoDataset(torch.utils.data.Dataset):
+
+class EchoDatasetLVHDetection(torch.utils.data.Dataset):
     """
-    PyTorch dataset that loads echocardiogram videos for supervised finetuning.
+    PyTorch dataset that loads echocardiogram videos for supervised finetuning for detecting LVH.
 
     Attributes
     ----------
@@ -38,7 +39,7 @@ class EchoDataset(torch.utils.data.Dataset):
         Channel-wise means of Kinetics-400 training set used for normalization
     std : np.ndarray
         Channel-wise standard deviations of Kinetics-400 training set used for normalization
-    
+
     Methods
     -------
     _sample_frames(x)
@@ -54,8 +55,24 @@ class EchoDataset(torch.utils.data.Dataset):
                             'video_num': [str] video ID to distinguish videos from same study,
                             'plax_prob': [float] predicted probability of video being from the PLAX view, as determined by view classifier}
     """
-    def __init__(self, data_dir, split, clip_len=16, sampling_rate=1, num_clips=4, augment=False, frac=1.0, kinetics=False):
-        assert split in ['100122_train_2016-2020', '100122_val_2016-2020', '100122_test_2016-2020', '100122_test_2021', '051823_test_2016-2020', '051823_full_test_2016-2020'], "split must be one of ['100122_train_2016-2020', '100122_val_2016-2020', '100122_test_2016-2020', '100122_train_2021', '051823_test_2016-2020', '051823_full_test_2016-2020']"
+
+    def __init__(
+        self,
+        data_dir,
+        split,
+        clip_len=4,
+        sampling_rate=1,
+        num_clips=4,
+        augment=False,
+        kinetics=False,
+    ):
+        assert split in [
+            "train",
+            "val",
+            "test",
+        ], (
+            "Invalid split. Must be one of ['train', 'val', 'test']."
+        )
 
         self.split = split
         self.clip_len = clip_len
@@ -64,48 +81,66 @@ class EchoDataset(torch.utils.data.Dataset):
         self.augment = augment
         self.kinetics = kinetics
 
-        self.video_dir = os.path.join(data_dir, 'videos')
-        self.label_df = pd.read_csv(os.path.join(data_dir, self.split + '.csv'))
+        self.video_dir = os.path.join(data_dir, "videos")
+        self.label_df = pd.read_csv(os.path.join(data_dir, self.split + ".csv"))
 
-        # Subset fraction of studies
-        if frac != 1.0:
-            study_ids = np.sort(self.label_df['acc_num'].unique())
+        print(self.label_df["lvh"].value_counts(normalize=True))
 
-            self.label_df = self.label_df[self.label_df['acc_num'].isin(np.random.choice(study_ids, size=int(frac*study_ids.size), replace=False))]
-
-            print('Num studies:', int(frac*study_ids.size))
-        print(self.label_df['severe_AS'].value_counts())
-
-        self.CLASSES = ['None', 'Severe']
-
-        # Kinetics-400 mean and std
-        self.mean = np.array([0.43216, 0.394666, 0.37645])
-        self.std = np.array([0.22803, 0.22145, 0.216989])
+        self.CLASSES = ["None", "LVH"]
 
     def _sample_frames(self, x):
         if self.clip_len is not None:
-            if self.split == '100122_train_2016-2020':
-                if x.shape[0] > self.clip_len*self.sampling_rate:
-                    start_idx = np.random.choice(x.shape[0]-self.clip_len*self.sampling_rate, size=1)[0]
-                    x = x[start_idx:(start_idx+self.clip_len*self.sampling_rate):self.sampling_rate]
+            if self.split == "train":
+                if x.shape[0] > self.clip_len * self.sampling_rate:
+                    start_idx = np.random.choice(
+                        x.shape[0] - self.clip_len * self.sampling_rate, size=1
+                    )[0]
+                    x = x[
+                        start_idx : (
+                            start_idx + self.clip_len * self.sampling_rate
+                        ) : self.sampling_rate
+                    ]
                     x = np.transpose(x, (3, 0, 1, 2))
                 else:
-                    x = x[::self.sampling_rate]
-                    x = np.pad(x, ((0, self.clip_len-x.shape[0]), (0, 0), (0, 0), (0, 0)), mode='constant')
+                    x = x[:: self.sampling_rate]
+                    x = np.pad(
+                        x,
+                        ((0, self.clip_len - x.shape[0]), (0, 0), (0, 0), (0, 0)),
+                        mode="constant",
+                    )
                     x = np.transpose(x, (3, 0, 1, 2))
             else:
-                if x.shape[0] >= self.clip_len*self.sampling_rate + self.num_clips:
-                    start_indices = np.arange(0, x.shape[0]-self.clip_len*self.sampling_rate, (x.shape[0]-self.clip_len*self.sampling_rate) // self.num_clips)[:self.num_clips]
-                    x = np.stack([x[start_idx:(start_idx+self.clip_len*self.sampling_rate):self.sampling_rate] for start_idx in start_indices], axis=0)
+                if x.shape[0] >= self.clip_len * self.sampling_rate + self.num_clips:
+                    start_indices = np.arange(
+                        0,
+                        x.shape[0] - self.clip_len * self.sampling_rate,
+                        (x.shape[0] - self.clip_len * self.sampling_rate)
+                        // self.num_clips,
+                    )[: self.num_clips]
+                    x = np.stack(
+                        [
+                            x[
+                                start_idx : (
+                                    start_idx + self.clip_len * self.sampling_rate
+                                ) : self.sampling_rate
+                            ]
+                            for start_idx in start_indices
+                        ],
+                        axis=0,
+                    )
                     x = np.transpose(x, (4, 0, 1, 2, 3))
-                elif x.shape[0] > self.clip_len*self.sampling_rate:
-                    x = x[::self.sampling_rate]
-                    x = x[:self.clip_len]
+                elif x.shape[0] > self.clip_len * self.sampling_rate:
+                    x = x[:: self.sampling_rate]
+                    x = x[: self.clip_len]
                     x = np.stack([x] * self.num_clips, axis=0)
                     x = np.transpose(x, (4, 0, 1, 2, 3))
                 else:
-                    x = x[::self.sampling_rate]
-                    x = np.pad(x, ((0, self.clip_len-x.shape[0]), (0, 0), (0, 0), (0, 0)), mode='constant')
+                    x = x[:: self.sampling_rate]
+                    x = np.pad(
+                        x,
+                        ((0, self.clip_len - x.shape[0]), (0, 0), (0, 0), (0, 0)),
+                        mode="constant",
+                    )
                     x = np.stack([x] * self.num_clips, axis=0)
                     x = np.transpose(x, (4, 0, 1, 2, 3))
         else:
@@ -121,7 +156,7 @@ class EchoDataset(torch.utils.data.Dataset):
         temp = np.zeros((l, h + 2 * pad, w + 2 * pad, c), dtype=x.dtype)
         temp[:, pad:-pad, pad:-pad, :] = x
         i, j = np.random.randint(0, 2 * pad, 2)
-        x = temp[:, i:(i + h), j:(j + w), :]
+        x = temp[:, i : (i + h), j : (j + w), :]
 
         # Random horitzontal flip
         if random.uniform(0, 1) > 0.5:
@@ -139,14 +174,24 @@ class EchoDataset(torch.utils.data.Dataset):
         return self.label_df.shape[0]
 
     def __getitem__(self, idx):
-        if self.split == '100122_test_2016-2020':
-            plax_prob, fname, acc_num, _, video_num, label, _, site = self.label_df.iloc[idx, :]
-        elif self.split in ['051823_test_2016-2020', '051823_full_test_2016-2020']:
-            plax_prob, fname, acc_num, _, video_num, label, _, = self.label_df.iloc[idx, :]
+        if self.split == "100122_test_2016-2020":
+            plax_prob, fname, acc_num, _, video_num, label, _, site = (
+                self.label_df.iloc[idx, :]
+            )
+        elif self.split in ["051823_test_2016-2020", "051823_full_test_2016-2020"]:
+            (
+                plax_prob,
+                fname,
+                acc_num,
+                _,
+                video_num,
+                label,
+                _,
+            ) = self.label_df.iloc[idx, :]
         else:
             plax_prob, fname, acc_num, _, video_num, label = self.label_df.iloc[idx, :]
 
-        if self.split in ['051823_test_2016-2020', '051823_full_test_2016-2020']:
+        if self.split in ["051823_test_2016-2020", "051823_full_test_2016-2020"]:
             x = load_video(fname)
         else:
             x = load_video(os.path.join(self.video_dir, fname))
@@ -159,7 +204,7 @@ class EchoDataset(torch.utils.data.Dataset):
         x = (x - x.min()) / (x.max() - x.min())
 
         if self.kinetics:
-            if self.split == '100122_train_2016-2020' or self.clip_len is None:
+            if self.split == "100122_train_2016-2020" or self.clip_len is None:
                 x -= self.mean.reshape(3, 1, 1, 1)
                 x /= self.std.reshape(3, 1, 1, 1)
             else:
@@ -168,8 +213,20 @@ class EchoDataset(torch.utils.data.Dataset):
 
         y = np.array([label])
 
-        if self.split == '100122_test_2016-2020':
-            return {'x': torch.from_numpy(x).float(), 'y': torch.from_numpy(y).float(), 'acc_num': acc_num, 'video_num': video_num, 'plax_prob': plax_prob, 'site': site}
+        if self.split == "100122_test_2016-2020":
+            return {
+                "x": torch.from_numpy(x).float(),
+                "y": torch.from_numpy(y).float(),
+                "acc_num": acc_num,
+                "video_num": video_num,
+                "plax_prob": plax_prob,
+                "site": site,
+            }
         else:
-            return {'x': torch.from_numpy(x).float(), 'y': torch.from_numpy(y).float(), 'acc_num': acc_num, 'video_num': video_num, 'plax_prob': plax_prob}
-            
+            return {
+                "x": torch.from_numpy(x).float(),
+                "y": torch.from_numpy(y).float(),
+                "acc_num": acc_num,
+                "video_num": video_num,
+                "plax_prob": plax_prob,
+            }
