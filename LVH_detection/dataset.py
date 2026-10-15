@@ -18,7 +18,7 @@ class EchoDatasetLVHDetection(torch.utils.data.Dataset):
     Attributes
     ----------
     split: str
-        Data split used to select studies that will be loaded (one of ["train", "val", "test", "ext_test"])
+        Data split used to select studies that will be loaded (one of ["train", "val", "test"])
     clip_len : int
         Number of frames to form video clips for training (clip length)
     num_clips : int
@@ -70,9 +70,7 @@ class EchoDatasetLVHDetection(torch.utils.data.Dataset):
             "train",
             "val",
             "test",
-        ], (
-            "Invalid split. Must be one of ['train', 'val', 'test']."
-        )
+        ], "Invalid split. Must be one of ['train', 'val', 'test']."
 
         self.split = split
         self.clip_len = clip_len
@@ -174,27 +172,11 @@ class EchoDatasetLVHDetection(torch.utils.data.Dataset):
         return self.label_df.shape[0]
 
     def __getitem__(self, idx):
-        if self.split == "100122_test_2016-2020":
-            plax_prob, fname, acc_num, _, video_num, label, _, site = (
-                self.label_df.iloc[idx, :]
-            )
-        elif self.split in ["051823_test_2016-2020", "051823_full_test_2016-2020"]:
-            (
-                plax_prob,
-                fname,
-                acc_num,
-                _,
-                video_num,
-                label,
-                _,
-            ) = self.label_df.iloc[idx, :]
-        else:
-            plax_prob, fname, acc_num, _, video_num, label = self.label_df.iloc[idx, :]
-
-        if self.split in ["051823_test_2016-2020", "051823_full_test_2016-2020"]:
-            x = load_video(fname)
-        else:
-            x = load_video(os.path.join(self.video_dir, fname))
+        # label_df columns for train/val/test:
+        # HashedFileName, split, IVSd, LVIDd, LVPWd, max_wall, lvh
+        fname, _, _, _, _, _, label = self.label_df.iloc[idx, :]
+        acc_num = fname
+        x = load_video(os.path.join(self.video_dir, fname))
 
         if self.augment:
             x = self._augment(x)
@@ -204,12 +186,8 @@ class EchoDatasetLVHDetection(torch.utils.data.Dataset):
         x = (x - x.min()) / (x.max() - x.min())
 
         if self.kinetics:
-            if self.split == "100122_train_2016-2020" or self.clip_len is None:
-                x -= self.mean.reshape(3, 1, 1, 1)
-                x /= self.std.reshape(3, 1, 1, 1)
-            else:
-                x -= self.mean.reshape(3, 1, 1, 1, 1)
-                x /= self.std.reshape(3, 1, 1, 1, 1)
+            x -= self.mean.reshape(3, 1, 1, 1, 1)
+            x /= self.std.reshape(3, 1, 1, 1, 1)
 
         y = np.array([label])
 
@@ -221,6 +199,12 @@ class EchoDatasetLVHDetection(torch.utils.data.Dataset):
                 "video_num": video_num,
                 "plax_prob": plax_prob,
                 "site": site,
+            }
+        elif self.split in ["train", "val", "test"]:
+            return {
+                "x": torch.from_numpy(x).float(),
+                "y": torch.from_numpy(y).float(),
+                "acc_num": acc_num,
             }
         else:
             return {

@@ -4,7 +4,7 @@ __pycache__/
 .DS_Store
 .ipynb_checkpoints/
 .posit/
-data/
+data/videos/
 
 # Training outputs / checkpoints
 ssl_pretraining/output/
