@@ -82,8 +82,10 @@ class EchoDatasetLVHDetection(torch.utils.data.Dataset):
         self.video_dir = os.path.join(data_dir, "videos")
         self.label_df = pd.read_csv(os.path.join(data_dir, self.split + ".csv"))
 
+        print(f"LVH class distribution ({self.split} split):")
         print(self.label_df["lvh"].value_counts(normalize=True))
 
+        self.frame_size = 112
         self.CLASSES = ["None", "LVH"]
 
     def _sample_frames(self, x):
@@ -168,15 +170,31 @@ class EchoDatasetLVHDetection(torch.utils.data.Dataset):
 
         return x
 
+    def _resize(self, x):
+        return np.stack(
+            [
+                cv2.resize(
+                    frame,
+                    (self.frame_size, self.frame_size),
+                    interpolation=cv2.INTER_AREA,
+                )
+                for frame in x
+            ],
+            axis=0,
+        )
+
     def __len__(self):
         return self.label_df.shape[0]
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index):
         # label_df columns for train/val/test:
         # HashedFileName, split, IVSd, LVIDd, LVPWd, max_wall, lvh
-        fname, _, _, _, _, _, label = self.label_df.iloc[idx, :]
+        row = self.label_df.iloc[index]
+        fname, label = row["HashedFileName"], row["lvh"]
         acc_num = fname
-        x = load_video(os.path.join(self.video_dir, fname))
+
+        x = load_video(os.path.join(self.video_dir, fname + ".avi"))
+        x = self._resize(x)
 
         if self.augment:
             x = self._augment(x)
@@ -191,26 +209,8 @@ class EchoDatasetLVHDetection(torch.utils.data.Dataset):
 
         y = np.array([label])
 
-        if self.split == "100122_test_2016-2020":
-            return {
-                "x": torch.from_numpy(x).float(),
-                "y": torch.from_numpy(y).float(),
-                "acc_num": acc_num,
-                "video_num": video_num,
-                "plax_prob": plax_prob,
-                "site": site,
-            }
-        elif self.split in ["train", "val", "test"]:
-            return {
-                "x": torch.from_numpy(x).float(),
-                "y": torch.from_numpy(y).float(),
-                "acc_num": acc_num,
-            }
-        else:
-            return {
-                "x": torch.from_numpy(x).float(),
-                "y": torch.from_numpy(y).float(),
-                "acc_num": acc_num,
-                "video_num": video_num,
-                "plax_prob": plax_prob,
-            }
+        return {
+            "x": torch.from_numpy(x).float(),
+            "y": torch.from_numpy(y).float(),
+            "acc_num": acc_num,
+        }
