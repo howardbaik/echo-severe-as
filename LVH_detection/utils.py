@@ -79,10 +79,6 @@ def train(model, device, loss_fxn, optimizer, data_loader, history, epoch, model
         }
     )
 
-    study_label_df = video_label_df.groupby(by=["acc_num"]).agg(
-        {"y_true": np.mean, "y_hat": np.mean}
-    )
-
     y_true = video_label_df["y_true"]
     y_hat = video_label_df["y_hat"]
 
@@ -100,26 +96,6 @@ def train(model, device, loss_fxn, optimizer, data_loader, history, epoch, model
     )
 
     out_str = f"[VIDEO LEVEL]   AUROC: {auroc:.3f} | AUPR: {aupr:.3f} | Acc: {acc:.3f} | BAcc: {b_acc:.3f} | MCC: {mcc:.3f} | Precision: {pr:.3f} | Recall: {re:.3f} | F1: {f1:.3f}"
-    print(out_str)
-
-    ## REPEAT FOR STUDY LEVEL METRICS ##
-    y_true = study_label_df["y_true"]
-    y_hat = study_label_df["y_hat"]
-
-    # AUROC
-    auroc = metrics.roc_auc_score(y_true, y_hat)
-    pr, re, _ = metrics.precision_recall_curve(y_true, y_hat)
-    aupr = metrics.auc(re, pr)
-
-    # Other metrics
-    acc = metrics.accuracy_score(y_true, y_hat.round())
-    b_acc = metrics.balanced_accuracy_score(y_true, y_hat.round())
-    mcc = metrics.matthews_corrcoef(y_true, y_hat.round())
-    pr, re, f1, _ = metrics.precision_recall_fscore_support(
-        y_true, y_hat.round(), average="binary"
-    )
-
-    out_str = f"[STUDY LEVEL] AUROC: {auroc:.3f} | AUPR: {aupr:.3f} | Acc: {acc:.3f} | BAcc: {b_acc:.3f} | MCC: {mcc:.3f} | Precision: {pr:.3f} | Recall: {re:.3f} | F1: {f1:.3f}"
     print(out_str)
 
     # Append metrics to history df
@@ -145,7 +121,7 @@ def train(model, device, loss_fxn, optimizer, data_loader, history, epoch, model
         os.path.join(model_dir, "history.csv"), mode="a", header=False, index=False
     )
 
-    return history.append(current_metrics)
+    return pd.concat([history, current_metrics], ignore_index=True)
 
 
 def validate(
@@ -235,10 +211,6 @@ def validate(
         }
     )
 
-    study_label_df = video_label_df.groupby(by=["acc_num"]).agg(
-        {"y_true": np.mean, "y_hat": np.mean}
-    )
-
     y_true = video_label_df["y_true"]
     y_hat = video_label_df["y_hat"]
 
@@ -257,29 +229,6 @@ def validate(
 
     out_str = f"[VIDEO LEVEL]   AUROC: {auroc:.3f} | AUPR: {aupr:.3f} | Acc: {acc:.3f} | BAcc: {b_acc:.3f} | MCC: {mcc:.3f} | Precision: {pr:.3f} | Recall: {re:.3f} | F1: {f1:.3f}"
     print(out_str)
-
-    ## REPEAT FOR STUDY LEVEL METRICS ##
-    y_true = study_label_df["y_true"]
-    y_hat = study_label_df["y_hat"]
-
-    # AUROC
-    auroc = metrics.roc_auc_score(y_true, y_hat)
-    pr, re, _ = metrics.precision_recall_curve(y_true, y_hat)
-    aupr = metrics.auc(re, pr)
-
-    # Other metrics
-    acc = metrics.accuracy_score(y_true, y_hat.round())
-    b_acc = metrics.balanced_accuracy_score(y_true, y_hat.round())
-    mcc = metrics.matthews_corrcoef(y_true, y_hat.round())
-    pr, re, f1, _ = metrics.precision_recall_fscore_support(
-        y_true, y_hat.round(), average="binary"
-    )
-
-    out_str = f"[STUDY LEVEL] AUROC: {auroc:.3f} | AUPR: {aupr:.3f} | Acc: {acc:.3f} | BAcc: {b_acc:.3f} | MCC: {mcc:.3f} | Precision: {pr:.3f} | Recall: {re:.3f} | F1: {f1:.3f}"
-    print(out_str)
-
-    # Append metrics to history df
-    val_loss = running_loss / (i + 1)
 
     current_metrics = pd.DataFrame(
         [
@@ -325,7 +274,11 @@ def validate(
         )
         early_stopping_dict["epochs_no_improve"] += 1
 
-    return history.append(current_metrics), early_stopping_dict, best_model_wts
+    return (
+        pd.concat([history, current_metrics], ignore_index=True),
+        early_stopping_dict,
+        best_model_wts,
+    )
 
 
 def evaluate(
@@ -366,16 +319,10 @@ def evaluate(
     running_loss = 0.0
     y_true, y_hat = [], []
     acc_nums = []
-    video_nums = []
-    if split == "100122_test_2016-2020":
-        sites = []
     with torch.no_grad():
         for i, batch in pbar:
             x, y = batch["x"].to(device), batch["y"].to(device)
             acc_num = batch["acc_num"]
-            video_num = batch["video_num"]
-            if split == "100122_test_2016-2020":
-                site = batch["site"]
 
             # Forward pass
             out = torch.stack(
@@ -394,9 +341,6 @@ def evaluate(
             y_true.append(y.detach().cpu().numpy())
             y_hat.append(out.detach().cpu().numpy())
             acc_nums.append(acc_num)
-            video_nums.append(video_num)
-            if split == "100122_test_2016-2020":
-                sites.append(site)
 
             pbar.set_postfix(
                 {"loss": running_loss / (i + 1)}
@@ -407,31 +351,18 @@ def evaluate(
         {
             "y_true": np.concatenate(y_true).ravel(),
             "y_hat": np.concatenate(y_hat).ravel(),
-            "acc_num": np.concatenate(acc_nums).ravel(),
-            "video_num": np.concatenate(video_nums).ravel(),
+            "acc_num": np.concatenate(acc_nums).ravel()
         }
     )
-    if split == "100122_test_2016-2020":
-        video_label_df["site"] = np.concatenate(sites).ravel()
 
     print(video_label_df)
-
-    if split == "100122_test_2016-2020":
-        study_label_df = video_label_df.groupby(by=["acc_num"]).agg(
-            {"y_true": np.mean, "y_hat": np.mean, "site": "first"}
-        )
-    else:
-        study_label_df = video_label_df.groupby(by=["acc_num"]).agg(
-            {"y_true": np.mean, "y_hat": np.mean}
-        )
-
-    print(study_label_df)
 
     y_true = video_label_df["y_true"]
     y_hat = video_label_df["y_hat"]
 
     # AUROC
     auroc = metrics.roc_auc_score(y_true, y_hat)
+    fpr, tpr, _ = metrics.roc_curve(y_true, y_hat)
     pr, re, _ = metrics.precision_recall_curve(y_true, y_hat)
     aupr = metrics.auc(re, pr)
 
@@ -450,65 +381,12 @@ def evaluate(
     video_out_str += f"\n{cls_report}"
     print(video_out_str)
 
-    ## REPEAT FOR STUDY LEVEL METRICS ##
-    y_true = study_label_df["y_true"]
-    y_hat = study_label_df["y_hat"]
-
-    # AUROC
-    fpr, tpr, _ = metrics.roc_curve(y_true, y_hat)
-    auroc = metrics.roc_auc_score(y_true, y_hat)
-    prs, res, thrs = metrics.precision_recall_curve(y_true, y_hat)
-    aupr = metrics.auc(res, prs)
-
-    # Other metrics
-    acc = metrics.accuracy_score(y_true, y_hat.round())
-    b_acc = metrics.balanced_accuracy_score(y_true, y_hat.round())
-    mcc = metrics.matthews_corrcoef(y_true, y_hat.round())
-    pr, re, f1, _ = metrics.precision_recall_fscore_support(
-        y_true, y_hat.round(), average="binary"
-    )
-    conf_mat = metrics.confusion_matrix(y_true, y_hat.round())
-    cls_report = metrics.classification_report(
-        y_true, y_hat.round(), target_names=classes, digits=3
-    )
-
-    out_str = f"[STUDY LEVEL] AUROC: {auroc:.3f} | AUPR: {aupr:.3f} | Acc: {acc:.3f} | BAcc: {b_acc:.3f} | MCC: {mcc:.3f} | Precision: {pr:.3f} | Recall: {re:.3f} | F1: {f1:.3f}"
-    out_str += f"\n{cls_report}"
-
-    # Get threshold that maximizes F1
-    num = 2 * prs * res
-    den = prs + res
-    f1s = np.divide(num, den, out=np.zeros_like(den), where=(den != 0))
-
-    idx = np.argmax(f1s)
-    best_thr = thrs[idx]
-    best_f1, best_pr, best_re = f1s[idx], prs[idx], res[idx]
-
-    out_str += f"\nBest threshold: {best_thr}\n"
-    out_str += f"\tF1: {best_f1:.3f} | Precision: {best_pr:.3f} | Recall/Sensitivity: {best_re:.3f}"
-
-    # Get threshold that maximizes F2
-    num = (1 + 2**2) * prs * res
-    den = (2**2 * prs) + res
-    f2s = np.divide(num, den, out=np.zeros_like(den), where=(den != 0))
-
-    idx = np.argmax(f2s)
-    best_thr = thrs[idx]
-    best_f2, best_pr, best_re = f2s[idx], prs[idx], res[idx]
-
-    out_str += f"\nBest threshold: {best_thr}\n"
-    out_str += f"\tF2: {best_f2:.3f} | Precision: {best_pr:.3f} | Recall/Sensitivity: {best_re:.3f}"
-
-    print(out_str)
-
+    
     # SAVE OUTPUT
     video_label_df.to_csv(
         os.path.join(model_dir, f"{split}_video_preds.csv"), index=False
     )  # video-level predictions
-    study_label_df.to_csv(
-        os.path.join(model_dir, f"{split}_preds.csv"), index=False
-    )  # study-level predictions
-
+    
     # Plot loss learing curves
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.plot(
@@ -566,21 +444,6 @@ def evaluate(
         os.path.join(model_dir, "aupr_history.png"), dpi=300, bbox_inches="tight"
     )
 
-    # Plot confusion matrix
-    fig, ax = plot_confusion_matrix(
-        conf_mat,
-        figsize=(6, 6),
-        colorbar=True,
-        show_absolute=True,
-        show_normed=True,
-        class_names=classes,
-    )
-    ax.set_xlabel("Predicted Label", fontsize=13)
-    ax.set_ylabel("True Label", fontsize=13)
-    fig.savefig(
-        os.path.join(model_dir, f"{split}_cm.png"), dpi=300, bbox_inches="tight"
-    )
-
     # Plot ROC
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.plot(fpr, tpr, lw=2, label=f"LVH (AUC: {auroc:.3f})")
@@ -593,27 +456,6 @@ def evaluate(
     fig.savefig(
         os.path.join(model_dir, f"{split}_roc.png"), dpi=300, bbox_inches="tight"
     )
-
-    # Plot PR curve
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    ax.plot(res, prs, lw=2, label=f"LVH (AUC: {aupr:.3f})")
-    ax.axhline(y=y_true.sum() / y_true.size, color="navy", lw=2, linestyle="--")
-    ax.set_xlim([-0.05, 1.05])
-    ax.set_ylim([-0.05, 1.05])
-    ax.set_xlabel("Recall", fontsize=13)
-    ax.set_ylabel("Precision", fontsize=13)
-    ax.legend(loc="upper right", fontsize=11)
-    fig.savefig(
-        os.path.join(model_dir, f"{split}_pr.png"), dpi=300, bbox_inches="tight"
-    )
-
-    # Create summary text describing final performance
-    summary = video_out_str
-    summary += "-" * 20 + "\n"
-    summary += out_str
-    f = open(os.path.join(model_dir, f"{split}_summary.txt"), "w")
-    f.write(summary)
-    f.close()
 
 
 def load_video(fpath):
