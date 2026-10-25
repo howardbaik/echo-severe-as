@@ -351,7 +351,7 @@ def evaluate(
         {
             "y_true": np.concatenate(y_true).ravel(),
             "y_hat": np.concatenate(y_hat).ravel(),
-            "acc_num": np.concatenate(acc_nums).ravel()
+            "acc_num": np.concatenate(acc_nums).ravel(),
         }
     )
 
@@ -381,12 +381,11 @@ def evaluate(
     video_out_str += f"\n{cls_report}"
     print(video_out_str)
 
-    
     # SAVE OUTPUT
     video_label_df.to_csv(
         os.path.join(model_dir, f"{split}_video_preds.csv"), index=False
     )  # video-level predictions
-    
+
     # Plot loss learing curves
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     ax.plot(
