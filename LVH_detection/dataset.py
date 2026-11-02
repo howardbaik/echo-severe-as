@@ -109,7 +109,7 @@ class EchoDatasetLVHDetection(torch.utils.data.Dataset):
                         mode="constant",
                     )
                     x = np.transpose(x, (3, 0, 1, 2))
-            else:
+            else: # val/test split
                 if x.shape[0] >= self.clip_len * self.sampling_rate + self.num_clips:
                     start_indices = np.arange(
                         0,
